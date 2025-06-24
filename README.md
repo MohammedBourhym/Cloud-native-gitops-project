@@ -2,6 +2,8 @@
 
 Command Buddy is a simple application that helps users memorize commands for various tools like Docker, Kubernetes, Git, etc. through interactive quizzes.
 
+![alt text](image.png)
+![alt text](image-1.png)
 ## Features
 
 - Generate quiz questions for specific tools (Docker, Kubernetes, Git, etc.)
