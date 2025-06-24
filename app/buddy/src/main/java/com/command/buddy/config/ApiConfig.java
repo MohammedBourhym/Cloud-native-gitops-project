@@ -5,13 +5,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
 
 @Configuration
-@PropertySource("file:.env")
+@PropertySource(value = "file:.env", ignoreResourceNotFound = true)
 public class ApiConfig {
 
-    @Value("${GROQ_API_KEY}")
+    @Value("${GROQ_API_KEY:}")
     private String groqApiKey;
     
-    @Value("${GROQ_API_URL}")
+    @Value("${GROQ_API_URL:https://api.groq.com/openai/v1/chat/completions}")
     private String groqApiUrl;
     
     public String getGroqApiKey() {

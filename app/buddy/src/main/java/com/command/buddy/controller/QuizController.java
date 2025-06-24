@@ -35,7 +35,12 @@ public class QuizController {
         response.put("question", question);
         response.put("toolName", toolName);
         
-        return ResponseEntity.ok(response);
+        return ResponseEntity
+            .ok()
+            .header("Cache-Control", "no-cache, no-store, must-revalidate")
+            .header("Pragma", "no-cache")
+            .header("Expires", "0")
+            .body(response);
     }
 
     /**

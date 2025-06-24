@@ -38,16 +38,23 @@ public class GroqClient {
      * @return a quiz question about using the tool
      */
     public String generateCommandQuestion(String toolName) {
+        // Add a timestamp to ensure uniqueness in the prompt
+        long timestamp = System.currentTimeMillis();
+        
         String prompt = String.format(
-            "You are a command line tutor helping users learn %s commands. " +
-            "Generate a practical question that asks the user to provide a specific %s command. " +
-            "Focus on common, useful operations. " +
+            "You are a command line tutor helping users learn %s commands. Current time: %d. " +
+            "Generate a NEW, UNIQUE practical question that asks the user to provide a specific %s command. " +
+            "Each question should be completely different from previous ones. " +
+            "Choose randomly from different categories of %s operations like: " +
+            "creating/configuring, managing, inspecting, modifying, troubleshooting, or advanced usage. " +
             "Format your response as a clear, concise question only. " +
-            "Do not provide the answer or any hints.",
-            toolName, toolName
+            "Do not provide the answer or any hints. " +
+            "Make sure the question is practical and realistic.",
+            toolName, timestamp, toolName, toolName
         );
         
-        return callGroqApi(prompt, 0.7);
+        // Increase temperature for more variety
+        return callGroqApi(prompt, 0.9);
     }
     
     /**
@@ -112,13 +119,29 @@ public class GroqClient {
         requestBody.put("model", "llama-3.3-70b-versatile");
         
         List<Map<String, String>> messages = new ArrayList<>();
-        Map<String, String> message = new HashMap<>();
-        message.put("role", "user");
-        message.put("content", prompt);
-        messages.add(message);
+        
+        // Add a system message to guide the LLM to provide diverse responses
+        Map<String, String> systemMessage = new HashMap<>();
+        systemMessage.put("role", "system");
+        systemMessage.put("content", "You are a command line education assistant. " +
+                "Provide diverse, unique responses and never repeat the same question twice. " +
+                "Generate questions that cover different aspects and complexity levels. " +
+                "Current timestamp: " + System.currentTimeMillis());
+        messages.add(systemMessage);
+        
+        // Add the user prompt
+        Map<String, String> userMessage = new HashMap<>();
+        userMessage.put("role", "user");
+        userMessage.put("content", prompt);
+        messages.add(userMessage);
         
         requestBody.put("messages", messages);
         requestBody.put("temperature", temperature);
+        
+        // Add some randomness parameters
+        requestBody.put("top_p", 0.95);
+        requestBody.put("frequency_penalty", 0.5);
+        requestBody.put("presence_penalty", 0.5);
         
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
         

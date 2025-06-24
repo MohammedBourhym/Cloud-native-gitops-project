@@ -1,0 +1,231 @@
+import React, { useState, useEffect } from 'react';
+import { apiService } from '../services/apiService';
+
+interface Tool {
+  name: string;
+  icon: string;
+}
+
+const tools: Tool[] = [
+  { name: 'git', icon: '🔄' },
+  { name: 'docker', icon: '🐳' },
+  { name: 'kubernetes', icon: '☸️' },
+  { name: 'bash', icon: '💻' },
+  { name: 'npm', icon: '📦' },
+  { name: 'mvn', icon: '🏗️' }
+];
+
+const CommandQuiz: React.FC = () => {
+  const [selectedTool, setSelectedTool] = useState<string>('');
+  const [question, setQuestion] = useState<string>('');
+  const [answer, setAnswer] = useState<string>('');
+  const [feedback, setFeedback] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
+  
+  // Generate a question when a tool is selected
+  useEffect(() => {
+    if (selectedTool) {
+      generateQuestion();
+    }
+  }, [selectedTool]);
+  
+  const generateQuestion = async () => {
+    setLoading(true);
+    setQuestion('');
+    setFeedback('');
+    setAnswer('');
+    
+    try {
+      const data = await apiService.getQuizQuestion(selectedTool);
+      setQuestion(data.question);
+    } catch (error) {
+      console.error('Error fetching question:', error);
+      setQuestion('Error generating question. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const checkAnswer = async () => {
+    if (!answer.trim()) return;
+    
+    setLoading(true);
+    setFeedback('');
+    
+    try {
+      const data = await apiService.checkAnswer(selectedTool, question, answer);
+      setFeedback(data.feedback);
+    } catch (error) {
+      console.error('Error checking answer:', error);
+      setFeedback('Error checking answer. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const saveCommand = async () => {
+    if (!answer.trim() || !feedback) return;
+    
+    try {
+      await apiService.saveCommand(selectedTool, answer, feedback);
+      alert('Command saved successfully!');
+    } catch (error) {
+      console.error('Error saving command:', error);
+      alert('Error saving command. Please try again.');
+    }
+  };
+  
+  return (
+    <div>
+      {/* Tool selection */}
+      <div className="mb-8">
+        <div className="flex items-center mb-3">
+          <span className="text-green-400 font-bold">$</span>
+          <span className="text-green-400 ml-2 font-semibold">select_tool</span>
+          <span className="text-gray-400 text-sm ml-auto">Choose a CLI tool to practice</span>
+        </div>
+        <div className="flex flex-wrap gap-3 bg-gray-800/50 p-4 rounded-lg">
+          {tools.map((tool) => (
+            <button
+              key={tool.name}
+              onClick={() => setSelectedTool(tool.name)}
+              className={`px-4 py-2 rounded-md flex items-center gap-2 transition-all duration-200 ${
+                selectedTool === tool.name
+                  ? 'bg-green-700/80 text-white shadow-lg shadow-green-900/30 transform scale-105'
+                  : 'bg-gray-700/80 text-gray-300 hover:bg-gray-600 hover:shadow-md'
+              }`}
+            >
+              <span className="text-xl">{tool.icon}</span>
+              <span className="font-medium">{tool.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      {/* Question area */}
+      {selectedTool && (
+        <div className="mb-8">
+          <div className="flex items-center mb-3">
+            <span className="text-green-400 font-bold">$</span>
+            <span className="text-green-400 ml-2 font-semibold">question</span>
+            <span className="text-gray-400 text-sm ml-auto">Your challenge</span>
+          </div>
+          <div className="bg-gray-800/50 p-5 rounded-lg border border-gray-700/50 shadow-inner">
+            {loading && !question ? (
+              <div className="flex items-center">
+                <div className="animate-pulse h-4 w-4 rounded-full bg-yellow-400 mr-3"></div>
+                <p className="text-yellow-400">Generating question...</p>
+              </div>
+            ) : (
+              <p className="text-white leading-relaxed">{question}</p>
+            )}
+          </div>
+          <button
+            onClick={generateQuestion}
+            className="mt-3 px-4 py-1.5 bg-blue-600/90 text-white rounded-md hover:bg-blue-700 transition-colors duration-200 text-sm flex items-center"
+            disabled={loading}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            New Question
+          </button>
+        </div>
+      )}
+      
+      {/* Answer input */}
+      {question && (
+        <div className="mb-8">
+          <div className="flex items-center mb-3">
+            <span className="text-green-400 font-bold">$</span>
+            <span className="text-green-400 ml-2 font-semibold">your_answer</span>
+            <span className="text-gray-400 text-sm ml-auto">Type your command</span>
+          </div>
+          <div className="flex">
+            <span className="bg-gray-800/80 text-green-400 px-3 py-2.5 border border-gray-700/50 border-r-0 rounded-l-md font-bold">
+              &gt;
+            </span>
+            <input
+              type="text"
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              className="flex-1 bg-gray-800/80 text-white px-3 py-2.5 border border-gray-700/50 rounded-r-md focus:outline-none focus:ring-2 focus:ring-green-500/50 font-['Fira_Code'] text-base shadow-inner"
+              placeholder="Type your command here..."
+              onKeyDown={(e) => e.key === 'Enter' && checkAnswer()}
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-3 mt-3">
+            <button
+              onClick={checkAnswer}
+              className="px-4 py-2 bg-green-600/90 text-white rounded-md hover:bg-green-700 transition-colors duration-200 text-sm flex items-center flex-1 justify-center"
+              disabled={!answer.trim() || loading}
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                  Checking...
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  Submit Answer
+                </>
+              )}
+            </button>
+            <button 
+              onClick={() => setAnswer('')}
+              className="px-4 py-2 bg-gray-600/50 text-white rounded-md hover:bg-gray-500/50 transition-colors duration-200 text-sm"
+              disabled={!answer.trim() || loading}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Feedback area */}
+      {feedback && (
+        <div className="mb-8">
+          <div className="flex items-center mb-3">
+            <span className="text-green-400 font-bold">$</span>
+            <span className="text-green-400 ml-2 font-semibold">feedback</span>
+            <span className="text-gray-400 text-sm ml-auto">Result & explanation</span>
+          </div>
+          <div className="bg-gray-800/50 p-5 rounded-lg border border-gray-700/50 shadow-inner relative overflow-hidden">
+            {/* Color indicator for correct/incorrect answers */}
+            <div className={`absolute left-0 top-0 bottom-0 w-1 ${feedback.toLowerCase().includes('correct') ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <div className="whitespace-pre-line ml-2">
+              <p className="text-white leading-relaxed">{feedback}</p>
+            </div>
+          </div>
+          <div className="flex gap-3 mt-3">
+            <button
+              onClick={saveCommand}
+              className="px-4 py-2 bg-purple-600/80 text-white rounded-md hover:bg-purple-700 transition-colors duration-200 text-sm flex items-center"
+              disabled={!answer.trim() || !feedback}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+              Save Command
+            </button>
+            <button
+              onClick={generateQuestion}
+              className="px-4 py-2 bg-blue-600/80 text-white rounded-md hover:bg-blue-700 transition-colors duration-200 text-sm flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Next Question
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default CommandQuiz;
