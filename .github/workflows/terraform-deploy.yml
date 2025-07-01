@@ -92,14 +92,40 @@ jobs:
           echo "Updating kubeconfig..."
           aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
           
-          # Test authentication
           echo "Testing cluster access..."
-          kubectl version --short
+          kubectl version --client
+          kubectl cluster-info
 
-      - name: Test cluster access
+      - name: Diagnose cluster and nodes
         if: steps.getconfig.outcome == 'success'
-        run: kubectl get nodes
+        run: |
+          echo "=== Node Groups Status ==="
+          aws eks list-nodegroups --cluster-name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+          
+          echo "=== Node Group Details ==="
+          for nodegroup in $(aws eks list-nodegroups --cluster-name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }} --query 'nodegroups[]' --output text); do
+            echo "Checking nodegroup: $nodegroup"
+            aws eks describe-nodegroup --cluster-name ${{ env.EKS_CLUSTER }} --nodegroup-name $nodegroup --region ${{ env.AWS_REGION }} --query 'nodegroup.{Status:status,DesiredSize:scalingConfig.desiredSize,MinSize:scalingConfig.minSize,MaxSize:scalingConfig.maxSize}'
+          done
+          
+          echo "=== Waiting for nodes to appear ==="
+          timeout 300 bash -c 'until kubectl get nodes --no-headers 2>/dev/null | wc -l | grep -v "^0$"; do echo "No nodes found yet, waiting..."; sleep 15; done' || echo "Timeout waiting for nodes"
+
+      - name: Wait for nodes to be ready
+        if: steps.getconfig.outcome == 'success'
+        timeout-minutes: 10
+        run: |
+          echo "Checking current nodes..."
+          kubectl get nodes || echo "No nodes found"
+          
+          echo "Waiting for nodes to be ready..."
+          kubectl wait --for=condition=Ready nodes --all --timeout=600s || echo "Nodes not ready within timeout"
+          
+          echo "Final node status:"
+          kubectl get nodes
 
       - name: Install Ingress controller
         if: steps.getconfig.outcome == 'success'
-        run: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.3/deploy/static/provider/aws/deploy.yaml --validate=false
+        run: |
+          echo "Installing ingress controller..."
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.3/deploy/static/provider/aws/deploy.yaml --validate=false
