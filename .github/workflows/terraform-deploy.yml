@@ -80,43 +80,26 @@ jobs:
           echo "Checking AWS identity..."
           aws sts get-caller-identity
           
-          echo "Waiting for EKS cluster to be ready..."
-          aws eks wait cluster-active --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
+          echo "Checking if cluster exists and is active..."
+          CLUSTER_STATUS=$(aws eks describe-cluster --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }} --query 'cluster.status' --output text)
+          echo "Cluster status: $CLUSTER_STATUS"
+          
+          if [ "$CLUSTER_STATUS" != "ACTIVE" ]; then
+            echo "Cluster is not active yet. Current status: $CLUSTER_STATUS"
+            exit 1
+          fi
           
           echo "Updating kubeconfig..."
           aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
           
-          echo "Verifying kubeconfig..."
-          kubectl config current-context
-          kubectl config view --minify
-
-      - name: Wait for nodes to be ready
-        if: steps.getconfig.outcome == 'success'
-        run: |
-          echo "Waiting for nodes to join the cluster..."
-          timeout 300 bash -c 'until kubectl get nodes 2>/dev/null; do echo "Waiting for nodes..."; sleep 10; done'
-          
-          echo "Waiting for nodes to be ready..."
-          kubectl wait --for=condition=Ready nodes --all --timeout=300s
+          # Test authentication
+          echo "Testing cluster access..."
+          kubectl version --short
 
       - name: Test cluster access
         if: steps.getconfig.outcome == 'success'
-        run: |
-          echo "Cluster info:"
-          kubectl cluster-info
-          echo "Nodes:"
-          kubectl get nodes
-          echo "Pods:"
-          kubectl get pods --all-namespaces
+        run: kubectl get nodes
 
       - name: Install Ingress controller
         if: steps.getconfig.outcome == 'success'
-        run: |
-          echo "Installing ingress controller..."
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.3/deploy/static/provider/aws/deploy.yaml --validate=false
-          
-          echo "Waiting for ingress controller to be ready..."
-          kubectl wait --namespace ingress-nginx \
-            --for=condition=ready pod \
-            --selector=app.kubernetes.io/component=controller \
-            --timeout=300s
+        run: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.3/deploy/static/provider/aws/deploy.yaml --validate=false
