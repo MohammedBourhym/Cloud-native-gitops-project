@@ -73,59 +73,20 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve -input=false -parallelism=1 planfile
 
+      - name: Configure AWS credentials
+        if: steps.apply.outcome == 'success'
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Update kubeconfig for EKS
         id: getconfig
         if: steps.apply.outcome == 'success'
-        run: |
-          echo "Checking AWS identity..."
-          aws sts get-caller-identity
-          
-          echo "Checking if cluster exists and is active..."
-          CLUSTER_STATUS=$(aws eks describe-cluster --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }} --query 'cluster.status' --output text)
-          echo "Cluster status: $CLUSTER_STATUS"
-          
-          if [ "$CLUSTER_STATUS" != "ACTIVE" ]; then
-            echo "Cluster is not active yet. Current status: $CLUSTER_STATUS"
-            exit 1
-          fi
-          
-          echo "Updating kubeconfig..."
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
-          
-          echo "Testing cluster access..."
-          kubectl version --client
-          kubectl cluster-info
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
 
-      - name: Diagnose cluster and nodes
-        if: steps.getconfig.outcome == 'success'
-        run: |
-          echo "=== Node Groups Status ==="
-          aws eks list-nodegroups --cluster-name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
-          
-          echo "=== Node Group Details ==="
-          for nodegroup in $(aws eks list-nodegroups --cluster-name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }} --query 'nodegroups[]' --output text); do
-            echo "Checking nodegroup: $nodegroup"
-            aws eks describe-nodegroup --cluster-name ${{ env.EKS_CLUSTER }} --nodegroup-name $nodegroup --region ${{ env.AWS_REGION }} --query 'nodegroup.{Status:status,DesiredSize:scalingConfig.desiredSize,MinSize:scalingConfig.minSize,MaxSize:scalingConfig.maxSize}'
-          done
-          
-          echo "=== Waiting for nodes to appear ==="
-          timeout 300 bash -c 'until kubectl get nodes --no-headers 2>/dev/null | wc -l | grep -v "^0$"; do echo "No nodes found yet, waiting..."; sleep 15; done' || echo "Timeout waiting for nodes"
-
-      - name: Wait for nodes to be ready
-        if: steps.getconfig.outcome == 'success'
-        timeout-minutes: 10
-        run: |
-          echo "Checking current nodes..."
-          kubectl get nodes || echo "No nodes found"
-          
-          echo "Waiting for nodes to be ready..."
-          kubectl wait --for=condition=Ready nodes --all --timeout=600s || echo "Nodes not ready within timeout"
-          
-          echo "Final node status:"
-          kubectl get nodes
 
       - name: Install Ingress controller
-        if: steps.getconfig.outcome == 'success'
-        run: |
-          echo "Installing ingress controller..."
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.3/deploy/static/provider/aws/deploy.yaml --validate=false
+        if: steps.apply.outcome == 'success' && steps.getconfig.outcome == 'success'
+        run: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/aws/deploy.yaml
