@@ -2,35 +2,35 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.43.0"
+      version = "~> 5.0"
     }
 
-   random = {
+    random = {
       source  = "hashicorp/random"
-      version = "~> 3.6.2"
+      version = "~> 3.0"
     }
 
     tls = {
       source  = "hashicorp/tls"
-      version = "~> 4.0.5"
+      version = "~> 4.0"
     }
 
     cloudinit = {
       source  = "hashicorp/cloudinit"
-      version = "~> 2.3.5"
+      version = "~> 2.0"
     }
 
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.27.0"
+      version = "~> 2.0"
     }
   }
 
   backend "s3" {
     bucket = "gitopsterrastate"
     key    = "terraform.tfstate"
-    region = "us-east-2"
+    region = "us-east-1"  
   }
 
-  required_version = "~> 1.9.2"
+  required_version = ">= 1.0"
 }
