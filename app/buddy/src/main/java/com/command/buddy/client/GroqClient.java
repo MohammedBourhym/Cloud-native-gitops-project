@@ -7,11 +7,12 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Client for interacting with Groq's LLM API
@@ -26,6 +27,7 @@ public class GroqClient {
     private String apiUrl;
     
     private final RestTemplate restTemplate;
+    private final Random random = new Random();
     
     public GroqClient() {
         this.restTemplate = new RestTemplate();
@@ -40,21 +42,42 @@ public class GroqClient {
     public String generateCommandQuestion(String toolName) {
         // Add a timestamp to ensure uniqueness in the prompt
         long timestamp = System.currentTimeMillis();
+        int randomNum = ThreadLocalRandom.current().nextInt(1, 10000);
+        
+        // Different task types for command categories
+        String[] taskTypes = {
+            "creating/configuring", "managing", "inspecting", "modifying", 
+            "troubleshooting", "advanced usage", "optimization", "automation", 
+            "security", "networking", "resource management", "cleanup tasks"
+        };
+        
+        // Randomly select 3-5 task types to focus on
+        int numTasksToUse = ThreadLocalRandom.current().nextInt(3, 6);
+        StringBuilder selectedTasks = new StringBuilder();
+        for (int i = 0; i < numTasksToUse; i++) {
+            int taskIndex = ThreadLocalRandom.current().nextInt(taskTypes.length);
+            selectedTasks.append(taskTypes[taskIndex]);
+            if (i < numTasksToUse - 1) {
+                selectedTasks.append(", ");
+            }
+        }
         
         String prompt = String.format(
-            "You are a command line tutor helping users learn %s commands. Current time: %d. " +
+            "You are a command line tutor helping users learn %s commands. " +
+            "Session ID: %d-%d. " +
             "Generate a NEW, UNIQUE practical question that asks the user to provide a specific %s command. " +
             "Each question should be completely different from previous ones. " +
-            "Choose randomly from different categories of %s operations like: " +
-            "creating/configuring, managing, inspecting, modifying, troubleshooting, or advanced usage. " +
+            "Focus on these %s operations: %s. " +
             "Format your response as a clear, concise question only. " +
             "Do not provide the answer or any hints. " +
-            "Make sure the question is practical and realistic.",
-            toolName, timestamp, toolName, toolName
+            "Make sure the question is practical and realistic for real-world scenarios. " +
+            "Ensure the question is completely different from any previous questions.",
+            toolName, timestamp, randomNum, toolName, toolName, selectedTasks.toString()
         );
         
-        // Increase temperature for more variety
-        return callGroqApi(prompt, 0.9);
+        // High temperature for maximum variety
+        double randomizedTemp = 0.8 + (random.nextDouble() * 0.2); // Between 0.8 and 1.0
+        return callGroqApi(prompt, randomizedTemp);
     }
     
     /**
@@ -120,13 +143,22 @@ public class GroqClient {
         
         List<Map<String, String>> messages = new ArrayList<>();
         
+        // Ensure uniqueness with detailed system message
+        long uniqueId = System.currentTimeMillis();
+        int randomValue = ThreadLocalRandom.current().nextInt(1, 10000);
+        
         // Add a system message to guide the LLM to provide diverse responses
         Map<String, String> systemMessage = new HashMap<>();
         systemMessage.put("role", "system");
-        systemMessage.put("content", "You are a command line education assistant. " +
-                "Provide diverse, unique responses and never repeat the same question twice. " +
-                "Generate questions that cover different aspects and complexity levels. " +
-                "Current timestamp: " + System.currentTimeMillis());
+        systemMessage.put("content", String.format(
+            "You are a command line education assistant. Request ID: %d-%d. " +
+            "Provide diverse, unique responses and NEVER repeat the same question twice. " +
+            "Generate questions that cover different aspects and complexity levels. " +
+            "Current timestamp: %d. " +
+            "Ensure each question is unique by varying the difficulty, concepts, and specificity. " +
+            "Always generate a different question than any you've generated before.",
+            uniqueId, randomValue, System.currentTimeMillis()
+        ));
         messages.add(systemMessage);
         
         // Add the user prompt
@@ -138,10 +170,14 @@ public class GroqClient {
         requestBody.put("messages", messages);
         requestBody.put("temperature", temperature);
         
-        // Add some randomness parameters
-        requestBody.put("top_p", 0.95);
-        requestBody.put("frequency_penalty", 0.5);
-        requestBody.put("presence_penalty", 0.5);
+        // Randomize parameters for more variety
+        double topP = 0.9 + (random.nextDouble() * 0.1); // Between 0.9 and 1.0
+        double freqPenalty = 0.4 + (random.nextDouble() * 0.4); // Between 0.4 and 0.8
+        double presPenalty = 0.4 + (random.nextDouble() * 0.4); // Between 0.4 and 0.8
+        
+        requestBody.put("top_p", topP);
+        requestBody.put("frequency_penalty", freqPenalty);
+        requestBody.put("presence_penalty", presPenalty);
         
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
         
