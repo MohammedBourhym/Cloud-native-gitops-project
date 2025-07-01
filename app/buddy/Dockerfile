@@ -7,8 +7,6 @@ WORKDIR /app
 # Copy source code
 COPY . .
 
-# Build the application
-RUN mvn clean package -DskipTests
 
 # Expose port 8080
 EXPOSE 8080
