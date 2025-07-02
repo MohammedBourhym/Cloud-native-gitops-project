@@ -34,9 +34,10 @@ env:
   EKS_CLUSTER: gitops-eks 
 
 jobs:
-  terraform:
-    name: ${{ github.event.inputs.action == 'destroy' && 'Destroy' || 'Apply' }} Terraform Code Changes
+  terraform-deploy:
+    name: "Deploy Infrastructure"
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
     defaults:
       run:
         shell: bash
@@ -92,18 +93,13 @@ jobs:
           (github.event.inputs.action == 'apply' && github.event_name == 'workflow_dispatch')
         run: terraform apply -auto-approve -input=false -parallelism=1 planfile
 
-      - name: Terraform Destroy
-        id: destroy
-        if: github.event.inputs.action == 'destroy' && github.event_name == 'workflow_dispatch'
-        run: |
-          echo "⚠️  DESTROYING ALL INFRASTRUCTURE ⚠️"
-          echo "This will delete:"
-          echo "- EKS Cluster: ${{ env.EKS_CLUSTER }}"
-          echo "- VPC and all networking resources"
-          echo "- Node groups and EC2 instances"
-          echo "- All associated AWS resources"
-          echo ""
-          terraform apply -auto-approve -input=false -parallelism=1 planfile
+      - name: Refresh AWS Credentials for Kubectl
+        if: steps.apply.outcome == 'success'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Update kubeconfig for EKS
         id: getconfig
@@ -116,7 +112,59 @@ jobs:
         if: steps.apply.outcome == 'success' && steps.getconfig.outcome == 'success'
         run: |
           echo "Installing ingress controller..."
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.3/deploy/static/provider/aws/deploy.yaml --validate=false
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/aws/deploy.yaml --validate=false
+
+  terraform-destroy:
+    name: "Destroy Infrastructure" 
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./infra/terraform
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.2
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -backend-config="bucket=$BUCKET_TF_STATE"
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -destroy -no-color -input=false -out planfile
+        continue-on-error: true
+
+      - name: Terraform Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Terraform Destroy
+        id: destroy
+        if: github.event.inputs.action == 'destroy' && github.event_name == 'workflow_dispatch'
+        run: |
+          echo "⚠️  DESTROYING ALL INFRASTRUCTURE ⚠️"
+          echo "This will delete:"
+          echo "- EKS Cluster: ${{ env.EKS_CLUSTER }}"
+          echo "- VPC and all networking resources"
+          echo "- Node groups and EC2 instances"
+          echo "- All associated AWS resources"
+          echo ""
+          terraform apply -auto-approve -input=false -parallelism=1 planfile
 
       - name: Destruction Summary
         if: steps.destroy.outcome == 'success'
